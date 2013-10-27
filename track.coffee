@@ -5,6 +5,11 @@ colors = require('colors')
 
 request = require('request').defaults({jar: true})
 
+pad = (n, width, z) ->
+  z = z || '0'
+  n = n + ''
+  return if n.length >= width then n else new Array(width - n.length + 1).join(z) + n
+
 process.stdin.setRawMode true
 
 #punycode = require 'punycode'
@@ -33,6 +38,7 @@ headers =
   'GV-Referer': url
   'GV-Ajax': 1
   'GV-Screen': '1600x900'
+  'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/28.0.1500.71 Chrome/28.0.1500.71 Safari/537.36'
  
 global.localStorage = 
     setItem: (key, value) -> headers[key] = value
@@ -69,7 +75,7 @@ lookupPlace = (s, cb) ->
             process.stdin.removeListener('data', listener)
             l '\nSelected place: ' + b[n].title + '(' + b[n].id + ')'
 
-            cb buffer
+            cb b[n]
             return
           else
             l 'Invaid place index'
@@ -101,7 +107,7 @@ searchTrains = ->
     value = body.value
     for train in value
       p("#{train.num.green}: #{train.from.station.blue.bold} - #{train.till.station.blue.bold}")
-      p(" : #{formatDate(train.from.date)} - #{formatDate(train.till.date)} : ")
+      p(" : #{formatDate(train.from.date)} - #{formatDate(train.till.date)} : \r")
       for type in train.types
         p("#{type.letter}(#{type.places}) ".green)
       l('')  
@@ -121,17 +127,19 @@ do init = ->
     process.exit()
 
   a = userSettings.date.split('.')
-  a = parseInt(num) for num in a
-  userSettings.date = new Date(a[2], a[1], a[0])
-  if Object.prototype.toString.call(userSettings.date) == "[object Date]" and !isNaN userSettings.date.getTime()
+  a = (parseInt(num) for num in a)
+  userSettings.date = new Date(a[2], a[1]-1, a[0])
+  if Object.prototype.toString.call(userSettings.date) == "[object Date]" and isNaN userSettings.date.getTime()
     l 'Invalid date'
     process.exit()
 
-  lookupPlace userSettings.from, (id) -> 
-    userSettings.from_id = id
+  lookupPlace userSettings.from, (place) ->
+    userSettings.from_id = place.id
+    userSettings.from = place.title
 
-    lookupPlace userSettings.to, (id) -> 
-      userSettings.to_id = id
+    lookupPlace userSettings.to, (place) ->
+      userSettings.to_id = place.id
+      userSettings.to = place.title
       
       #all data is ready, let's start
       time = new Date();
@@ -140,4 +148,9 @@ do init = ->
         time = (new Date()).valueOf() - time.valueOf()
         l(': ' + time + 'ms \n')
         grabToken(/\$\$_.+?\)\)\(\)/.exec(body)[0])
+        params.station_id_from = userSettings.from_id
+        params.station_id_till = userSettings.to_id
+        params.station_from = userSettings.from
+        params.station_till = userSettings.to
+        params.date_dep = "#{pad(userSettings.date.getDate(), 2)}.#{pad(userSettings.date.getMonth()+1, 2)}.#{pad(userSettings.date.getFullYear(), 4)}"
         searchTrains()
