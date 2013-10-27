@@ -11,6 +11,13 @@ pad = (n, width, z) ->
   return if n.length >= width then n else new Array(width - n.length + 1).join(z) + n
 
 process.stdin.setRawMode true
+process.stdin.resume();
+process.stdin.setEncoding('utf8');
+
+process.stdin.on 'data', listener = (key) ->
+  #ctrl-c ( end of text )
+  if key == '\u0003' or key.charCodeAt(0) == 27
+    process.exit()
 
 #punycode = require 'punycode'
 
@@ -55,13 +62,6 @@ lookupPlace = (s, cb) ->
     for index, place of b
       l(index + ': ' + place.title)
 
-    process.stdin.resume();
-    process.stdin.setEncoding('utf8');
-
-#    process.stdin.on 'data', (text) ->
-#      console.log 'received data:', util.inspect(text)
-#      cb(b[text])
-
     buffer = ''
     process.stdin.on 'data', listener = (key) ->
       #ctrl-c ( end of text )
@@ -71,7 +71,7 @@ lookupPlace = (s, cb) ->
         n = ~~Number(buffer);
         if String(n) == buffer && n >= 0
           if b[n]
-            process.stdin.pause()
+            #process.stdin.pause()
             process.stdin.removeListener('data', listener)
             l '\nSelected place: ' + b[n].title + '(' + b[n].id + ')'
 
@@ -88,12 +88,12 @@ lookupPlace = (s, cb) ->
       buffer += key
       p key
 
-searchTrains = ->
+searchTrains = (cb) ->
   formatDate = (d) ->
     d = new Date(d*1000)
     "#{d.getDate()}-#{d.getMonth() + 1}-#{d.getFullYear()} #{d.getHours()}:#{d.getMinutes()}"
 
-  p('Searching...\r')
+  p("Searching...#{Array(100).join(' ')}\r")
   request.post({
     url: searchUrl
     headers: headers
@@ -107,11 +107,20 @@ searchTrains = ->
     value = body.value
     for train in value
       p("#{train.num.green}: #{train.from.station.blue.bold} - #{train.till.station.blue.bold}")
-      p(" : #{formatDate(train.from.date)} - #{formatDate(train.till.date)} : \r")
+      p(" : #{formatDate(train.from.date)} - #{formatDate(train.till.date)} : ")
       for type in train.types
         p("#{type.letter}(#{type.places}) ".green)
-      l('')  
+    cb()
   )
+
+scheduler = ->
+  attempts = 0
+
+  do doIt = ->
+    attempts++
+    searchTrains ->
+      setTimeout(doIt, 5000)
+      p(': Attempts: ' + attempts + '\r')
 
 do init = ->
   #command line arguments
@@ -153,4 +162,4 @@ do init = ->
         params.station_from = userSettings.from
         params.station_till = userSettings.to
         params.date_dep = "#{pad(userSettings.date.getDate(), 2)}.#{pad(userSettings.date.getMonth()+1, 2)}.#{pad(userSettings.date.getFullYear(), 4)}"
-        searchTrains()
+        scheduler()
